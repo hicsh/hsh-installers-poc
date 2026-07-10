@@ -65,6 +65,7 @@ app.UseCors(cors => cors
 app.MapHub<RandomHub>("/hub");
 app.MapGet("/health", () => "HSH Agent running");
 app.MapGet("/version", () => Results.Ok(new { version = agentVersion }));
+app.MapGet("/random", () => Results.Ok(new { value = Random.Shared.Next() }));
 
 // Self-update, driven by the web app's "Update now" button. GET reports the
 // current state; POST kicks off a download-and-apply that ends by exiting the
