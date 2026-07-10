@@ -101,21 +101,14 @@ public sealed class UpdateService : BackgroundService
         var repoUrl = section.GetSection("Github")["RepoUrl"];
         var prerelease = bool.TryParse(section.GetSection("Github")["Prerelease"], out var pre) && pre;
 
-        // A token is only needed for a PRIVATE repo's releases; public release
-        // assets download anonymously. Read from config, which ASP.NET also
-        // sources from the environment variable Update__Github__AccessToken — so
-        // it can be supplied at runtime without ever living in appsettings.json
-        // (see the security note in README). Empty ⇒ null ⇒ anonymous.
-        var accessToken = section.GetSection("Github")["AccessToken"];
-        if (string.IsNullOrWhiteSpace(accessToken)) accessToken = null;
-
         if (_policy != UpdatePolicy.Disabled && !string.IsNullOrWhiteSpace(repoUrl))
         {
             try
             {
+                // Public repo ⇒ release assets download anonymously, no token needed.
                 // Reads releases.<channel>.json + the *.nupkg assets attached to
                 // the project's GitHub Releases.
-                var source = new GithubSource(repoUrl, accessToken: accessToken, prerelease: prerelease);
+                var source = new GithubSource(repoUrl, accessToken: null, prerelease: prerelease);
                 _mgr = new UpdateManager(source, new UpdateOptions { ExplicitChannel = channel });
             }
             catch (Exception ex)
