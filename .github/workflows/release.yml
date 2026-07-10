@@ -1,0 +1,116 @@
+name: Release
+
+# Cuts a release on every semver tag (e.g. v0.1.0). Each platform job publishes a
+# self-contained agent and runs `vpk pack` on its matching OS (Velopack packages
+# for the host OS), then a single publish job attaches everything to one GitHub
+# Release — which is exactly the feed the agent reads via Velopack's GithubSource.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write   # create the GitHub Release + upload assets
+
+env:
+  VPK_VERSION: '1.2.0'
+  DOTNET_VERSION: '8.0.x'
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Install vpk
+        run: |
+          dotnet tool install -g vpk --version "$VPK_VERSION"
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Pack win-x64
+        run: bash scripts/pack.sh "${GITHUB_REF_NAME#v}" win-x64
+      - uses: actions/upload-artifact@v5
+        with:
+          name: releases-win-x64
+          path: dist/releases/
+          retention-days: 7
+
+  build-macos:
+    runs-on: macos-latest   # Apple Silicon runner cross-builds both mac arches
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Install vpk
+        run: |
+          dotnet tool install -g vpk --version "$VPK_VERSION"
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Pack osx-arm64 + osx-x64
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          bash scripts/pack.sh "$VERSION" osx-arm64
+          bash scripts/pack.sh "$VERSION" osx-x64
+      - uses: actions/upload-artifact@v5
+        with:
+          name: releases-macos
+          path: dist/releases/
+          retention-days: 7
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Install AppImage runtime deps
+        run: sudo apt-get update && sudo apt-get install -y libfuse2
+      - name: Install vpk
+        run: |
+          dotnet tool install -g vpk --version "$VPK_VERSION"
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Pack linux-x64
+        run: bash scripts/pack.sh "${GITHUB_REF_NAME#v}" linux-x64
+      - name: Normalize AppImage name
+        run: |
+          # Pin the AppImage to the canonical name the web app links to.
+          shopt -s nullglob
+          for f in dist/releases/*.AppImage; do
+            [ "$(basename "$f")" = "HshAgent-linux-x64.AppImage" ] && continue
+            mv "$f" dist/releases/HshAgent-linux-x64.AppImage
+          done
+      - uses: actions/upload-artifact@v5
+        with:
+          name: releases-linux-x64
+          path: dist/releases/
+          retention-days: 7
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-macos, build-linux]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Collect all release artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: dist/releases
+          pattern: releases-*
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "==> Release assets:"
+          ls -1 dist/releases/
+          gh release create "$GITHUB_REF_NAME" dist/releases/* \
+            --title "HSH Agent $VERSION" \
+            --generate-notes \
+            --latest

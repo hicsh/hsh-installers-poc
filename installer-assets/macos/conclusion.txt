@@ -1,0 +1,11 @@
+✓  You're all set
+
+The HSH Agent is installed and registered to start at login. To finish:
+
+  1.  Launch "HSH Agent" once.
+      Open it from Applications so it starts automatically at every login.
+
+  2.  Open the HSH web app.
+      It connects to the agent automatically and starts showing live data.
+
+That's it — the agent runs in the background and keeps itself up to date.

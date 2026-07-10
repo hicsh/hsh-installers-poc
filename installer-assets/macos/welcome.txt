@@ -1,0 +1,14 @@
+HSH Agent
+A small background service for the HSH web app
+
+This installer sets up the HSH Agent — a lightweight local service that the HSH
+web app connects to over your machine's loopback interface.
+
+During installation it will:
+
+  •  Install the HSH Agent into your Applications
+  •  Register it to start automatically when you log in
+  •  Begin streaming live data to the web app the moment it's running
+
+The agent keeps itself up to date in the background, so this is normally the only
+time you'll run an installer. The next screens have a few notes before you begin.

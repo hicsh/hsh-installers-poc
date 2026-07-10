@@ -1,0 +1,79 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "agent: run",
+      "type": "process",
+      "command": "dotnet",
+      "args": ["run", "--project", "agent/HshAgent/HshAgent.csproj"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "dotnet",
+        "pattern": {
+          "regexp": "^\\b$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*Building\\.\\.\\..*",
+          "endsPattern": ".*HSH Agent v.*::.*"
+        }
+      },
+      "presentation": {
+        "group": "hsh",
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "web: serve",
+      "type": "npm",
+      "script": "start",
+      "path": "web",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "angular",
+        "pattern": {
+          "regexp": "^\\b$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*(Building|Watch mode enabled|Generating browser application bundles).*",
+          "endsPattern": ".*(Local:|Application bundle generation complete|compiled successfully).*"
+        }
+      },
+      "presentation": {
+        "group": "hsh",
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "agent: build",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "agent/HshAgent/HshAgent.csproj",
+        "/property:GenerateFullPaths=true",
+        "/consoleloggerparameters:NoSummary"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "Run all (agent + web)",
+      "dependsOn": ["agent: run", "web: serve"],
+      "dependsOrder": "parallel",
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    }
+  ]
+}

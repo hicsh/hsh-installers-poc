@@ -1,0 +1,35 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Agent (.NET)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "agent: build",
+      "program": "${workspaceFolder}/agent/HshAgent/bin/Debug/net8.0/HshAgent.dll",
+      "args": [],
+      "cwd": "${workspaceFolder}/agent/HshAgent",
+      "stopAtEntry": false,
+      "console": "internalConsole",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "http://localhost:([0-9]+)"
+      }
+    },
+    {
+      "name": "Web (Angular)",
+      "type": "chrome",
+      "request": "launch",
+      "preLaunchTask": "web: serve",
+      "url": "http://localhost:4200",
+      "webRoot": "${workspaceFolder}/web"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Agent + Web",
+      "configurations": ["Agent (.NET)", "Web (Angular)"],
+      "stopAll": true
+    }
+  ]
+}
