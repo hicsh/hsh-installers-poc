@@ -9,11 +9,13 @@ public static class WindowsInstallHooks
 {
     private const string ServiceName = "HshAgent";
     private const string DisplayName = "HSH Agent";
+    private static readonly string LogFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HshAgent", "install.log");
 
     public static bool RegisteredSelfStartingAutostart { get; set; }
 
     public static void AfterInstall(SemanticVersion version)
     {
+        LogToFile("AfterInstall hook called");
         RegisterWindowsService();
     }
 
@@ -32,13 +34,21 @@ public static class WindowsInstallHooks
     private static void RegisterWindowsService()
     {
         var exe = Environment.ProcessPath;
-        if (string.IsNullOrEmpty(exe)) return;
+        if (string.IsNullOrEmpty(exe))
+        {
+            LogToFile("ERROR: ProcessPath is null or empty");
+            return;
+        }
+
+        LogToFile($"RegisterWindowsService called with exe: {exe}");
 
         try
         {
 #pragma warning disable CA1416
+            LogToFile("Connecting to WMI...");
             var scope = new ManagementScope(@"\\.\root\cimv2");
             scope.Connect();
+            LogToFile("WMI connected, creating service...");
 
             var mcd = new ManagementClass(scope, new ManagementPath("Win32_Service"), null);
             var inParams = mcd.GetMethodParameters("Create");
@@ -51,17 +61,20 @@ public static class WindowsInstallHooks
             var returnValue = Convert.ToInt32(outParams["returnValue"]);
             if (returnValue != 0)
             {
-                Console.Error.WriteLine($"Failed to create service: error code {returnValue}");
+                LogToFile($"Failed to create service: error code {returnValue}");
                 return;
             }
 
+            LogToFile("Service created, starting...");
             using var service = new ServiceController(ServiceName);
             service.Start();
+            LogToFile($"Service '{DisplayName}' registered and started successfully.");
             Console.WriteLine($"Service '{DisplayName}' registered and started successfully.");
 #pragma warning restore CA1416
         }
         catch (Exception ex)
         {
+            LogToFile($"ERROR: {ex.GetType().Name}: {ex.Message}");
             Console.Error.WriteLine($"Failed to register Windows Service: {ex.Message}");
         }
     }
@@ -108,5 +121,15 @@ public static class WindowsInstallHooks
         {
             Console.Error.WriteLine($"Failed to run {file}: {ex.Message}");
         }
+    }
+
+    private static void LogToFile(string message)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LogFile)!);
+            File.AppendAllText(LogFile, $"{DateTime.UtcNow:O} {message}\n");
+        }
+        catch { }
     }
 }
