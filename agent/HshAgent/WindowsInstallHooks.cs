@@ -1,14 +1,11 @@
 using System.Diagnostics;
-using System.Management;
-using System.ServiceProcess;
 using Velopack;
 
 namespace HshAgent;
 
 public static class WindowsInstallHooks
 {
-    private const string ServiceName = "HshAgent";
-    private const string DisplayName = "HSH Agent";
+    private const string TaskName = "HshAgent";
     private static readonly string LogFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "HshAgent", "install.log");
 
     public static bool RegisteredSelfStartingAutostart { get; set; }
@@ -16,35 +13,39 @@ public static class WindowsInstallHooks
     public static void AfterInstall(SemanticVersion version)
     {
         LogToFile("AfterInstall hook called");
-        RegisterWindowsService();
+        RegisterScheduledTask();
     }
 
     public static void BeforeUninstall(SemanticVersion version)
     {
-        UnregisterWindowsService();
+        UnregisterScheduledTask();
     }
 
     public static void FirstRun(SemanticVersion version)
     {
-        // On first run after install, register the service. This is a fallback in case
-        // the AfterInstall fast callback didn't fire (common issue with Velopack).
         LogToFile("FirstRun hook called");
 
         try
         {
-            RegisterWindowsService();
+            RegisterScheduledTask();
             RegisteredSelfStartingAutostart = true;
         }
         catch (Exception ex)
         {
-            LogToFile($"FirstRun: Failed to register service: {ex.Message}");
-            // App will still run, but service won't auto-start on reboot
+            LogToFile($"FirstRun: Failed to register scheduled task: {ex.Message}");
         }
 
         Console.WriteLine($"HSH Agent v{version} installed.");
     }
 
-    private static void RegisterWindowsService()
+    // Registers a per-user logon Scheduled Task instead of a Windows Service:
+    // creating a Win32 Service always requires an elevated token, but Velopack
+    // installs to %LocalAppData% specifically so it never needs elevation, so
+    // Win32_Service.Create reliably failed with access-denied (error code 2)
+    // from both the AfterInstall and FirstRun hooks. A ONLOGON task created
+    // with /RL LIMITED runs at the user's normal privilege level, matching how
+    // the installer itself runs.
+    private static void RegisterScheduledTask()
     {
         var exe = Environment.ProcessPath;
         if (string.IsNullOrEmpty(exe))
@@ -53,86 +54,71 @@ public static class WindowsInstallHooks
             return;
         }
 
-        LogToFile($"RegisterWindowsService called with exe: {exe}");
+        LogToFile($"RegisterScheduledTask called with exe: {exe}");
 
-        try
+        var createArgs = new[]
         {
-#pragma warning disable CA1416
-            LogToFile("Connecting to WMI...");
-            var scope = new ManagementScope(@"\\.\root\cimv2");
-            scope.Connect();
-            LogToFile("WMI connected, creating service...");
-
-            var mcd = new ManagementClass(scope, new ManagementPath("Win32_Service"), null);
-            var inParams = mcd.GetMethodParameters("Create");
-            inParams["Name"] = ServiceName;
-            inParams["PathName"] = exe;
-            inParams["DisplayName"] = DisplayName;
-            inParams["StartMode"] = "Automatic";
-            var outParams = mcd.InvokeMethod("Create", inParams, null);
-
-            var returnValue = Convert.ToInt32(outParams["returnValue"]);
-            if (returnValue != 0)
-            {
-                LogToFile($"Failed to create service: error code {returnValue}");
-                return;
-            }
-
-            LogToFile("Service created, starting...");
-            using var service = new ServiceController(ServiceName);
-            service.Start();
-            LogToFile($"Service '{DisplayName}' registered and started successfully.");
-            Console.WriteLine($"Service '{DisplayName}' registered and started successfully.");
-#pragma warning restore CA1416
-        }
-        catch (Exception ex)
+            "/Create", "/TN", TaskName,
+            "/TR", $"\"{exe}\"",
+            "/SC", "ONLOGON",
+            "/RL", "LIMITED",
+            "/F",
+        };
+        var (createExit, createOutput) = Run("schtasks.exe", createArgs);
+        if (createExit != 0)
         {
-            LogToFile($"ERROR: {ex.GetType().Name}: {ex.Message}");
-            Console.Error.WriteLine($"Failed to register Windows Service: {ex.Message}");
+            LogToFile($"Failed to create scheduled task: exit code {createExit}, output: {createOutput}");
+            return;
         }
+
+        LogToFile("Scheduled task created, starting now...");
+        var (runExit, runOutput) = Run("schtasks.exe", new[] { "/Run", "/TN", TaskName });
+        if (runExit != 0)
+        {
+            LogToFile($"Failed to start scheduled task: exit code {runExit}, output: {runOutput}");
+            return;
+        }
+
+        LogToFile("Scheduled task registered and started successfully.");
+        Console.WriteLine("Scheduled task registered and started successfully.");
     }
 
-    private static void UnregisterWindowsService()
+    private static void UnregisterScheduledTask()
     {
         try
         {
-#pragma warning disable CA1416
-            using var service = new ServiceController(ServiceName);
-            if (service.Status != ServiceControllerStatus.Stopped)
-                service.Stop();
-            service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(5));
-#pragma warning restore CA1416
-        }
-        catch
-        {
-            // Service might not exist, continue with deletion
-        }
-
-        try
-        {
-            Run("sc.exe", $"delete {ServiceName}");
-            Console.WriteLine($"Service '{DisplayName}' unregistered successfully.");
+            Run("schtasks.exe", new[] { "/Delete", "/TN", TaskName, "/F" });
+            Console.WriteLine("Scheduled task unregistered successfully.");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Failed to unregister Windows Service: {ex.Message}");
+            Console.Error.WriteLine($"Failed to unregister scheduled task: {ex.Message}");
         }
     }
 
-    private static void Run(string file, string args)
+    private static (int ExitCode, string Output) Run(string file, string[] args)
     {
         try
         {
-            using var p = Process.Start(new ProcessStartInfo(file, args)
+            var psi = new ProcessStartInfo(file)
             {
                 UseShellExecute = false,
                 CreateNoWindow = true,
-            });
-            p?.WaitForExit();
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            };
+            foreach (var arg in args) psi.ArgumentList.Add(arg);
+
+            using var p = Process.Start(psi);
+            if (p is null) return (-1, "process failed to start");
+
+            var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
+            p.WaitForExit();
+            return (p.ExitCode, output.Trim());
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Failed to run {file}: {ex.Message}");
+            return (-1, ex.Message);
         }
     }
 

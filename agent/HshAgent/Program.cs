@@ -43,13 +43,6 @@ var agentVersion = typeof(Program).Assembly
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Makes the generic host speak the Windows Service Control Manager protocol
-// when launched by sc.exe (SCM start/stop, no console, EventLog logging) —
-// without this, sc.exe's process never signals SERVICE_RUNNING, SCM treats the
-// start as failed, and sc.exe's restart-on-failure actions never fire. No-op
-// off Windows or outside an actual service session.
-builder.Host.UseWindowsService();
-
 // localhost-only HTTP API the browser app talks to. Port is configurable so it
 // can coexist with anything else on the machine.
 var port = builder.Configuration.GetValue("Server:Port", 9740);
