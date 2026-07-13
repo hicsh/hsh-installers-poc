@@ -80,9 +80,9 @@ app.MapGet("/random", () => Results.Ok(new { value = Random.Shared.Next() }));
 app.MapGet("/update/status", (UpdateService updater) => Results.Ok(updater.GetStatus()));
 app.MapPost("/update", (UpdateService updater) => Results.Ok(updater.RequestUpdate()));
 
-Console.WriteLine("=================================");
+Console.WriteLine("===========================================================");
 Console.WriteLine($"  HSH Agent v{agentVersion} :: http://localhost:{port}/hub");
-Console.WriteLine("=================================");
+Console.WriteLine("===========================================================");
 
 try
 {
