@@ -26,12 +26,16 @@ public static class InstallHooks
     private const string SystemdUnit = "hsh-agent";
 
     /// <summary>
-    /// Set during <see cref="FirstRun"/> when we register an OS autostart entry
-    /// that immediately launches its own managed copy of the agent (macOS
-    /// LaunchAgent <c>RunAtLoad</c> / systemd <c>--now</c>). The first-run
-    /// foreground process must then exit instead of also starting the web host —
-    /// otherwise both instances race to bind the HTTP port and the loser crashes,
-    /// which under <c>KeepAlive</c> turns into a relaunch/crash loop. See Program.cs.
+    /// Set during <see cref="FirstRun"/> when a managed copy of the agent is
+    /// already running under the OS service manager by the time this hook
+    /// fires: macOS/Linux register + start their autostart entry here (LaunchAgent
+    /// <c>RunAtLoad</c> / systemd <c>--now</c>); on Windows, <see cref="AfterInstall"/>
+    /// already created + started the Windows Service, elevated, earlier in the
+    /// install. Either way, the first-run foreground process — launched by
+    /// Setup.exe's "run app after install" — must exit instead of also starting
+    /// the web host, otherwise both instances race to bind the HTTP port and the
+    /// loser crashes, which under KeepAlive / sc.exe's restart policy turns into
+    /// a relaunch/crash loop. See Program.cs.
     /// </summary>
     public static bool RegisteredSelfStartingAutostart { get; private set; }
 
@@ -77,6 +81,11 @@ public static class InstallHooks
             RegisterLaunchAgent();
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             RegisterSystemdUnit();
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            // AfterInstall (elevated fast callback) already created + started the
+            // Windows Service earlier in the install. This foreground copy just
+            // needs to hand off to it, same as the macOS/Linux branches above.
+            RegisteredSelfStartingAutostart = true;
 
         Console.WriteLine($"HSH Agent v{version} installed.");
     }

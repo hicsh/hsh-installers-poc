@@ -2,7 +2,6 @@ using System.Reflection;
 using HshAgent;
 using Microsoft.AspNetCore.Connections;
 using Velopack;
-using Velopack.Sources;
 
 // Must run before anything else: handles Velopack's install/update/uninstall
 // hooks and returns immediately on a normal run. OnFirstRun is cross-platform
@@ -19,11 +18,12 @@ if (OperatingSystem.IsWindows())
 velopack.Run();
 
 // On the first launch after install we just registered an OS autostart entry
-// (launchd LaunchAgent / systemd user unit) that immediately starts its own
-// managed copy of the agent. Hand off to that single instance and exit: if this
-// foreground process also started the web host, the two would race to bind the
-// HTTP port and the loser would crash — and under KeepAlive that becomes a
-// relaunch/crash loop. Later launches (by the service manager) skip OnFirstRun.
+// (launchd LaunchAgent / systemd user unit / Windows Service) that immediately
+// starts its own managed copy of the agent. Hand off to that single instance
+// and exit: if this foreground process also started the web host, the two
+// would race to bind the HTTP port and the loser would crash — and under
+// KeepAlive/sc.exe's restart policy that becomes a relaunch/crash loop. Later
+// launches (by the service manager) skip OnFirstRun.
 if (InstallHooks.RegisteredSelfStartingAutostart)
 {
     Console.WriteLine("First-run setup complete — handing off to the background service.");
@@ -35,6 +35,13 @@ var agentVersion = typeof(Program).Assembly
     ?.InformationalVersion ?? "0.0.0";
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Makes the generic host speak the Windows Service Control Manager protocol
+// when launched by sc.exe (SCM start/stop, no console, EventLog logging) —
+// without this, sc.exe's process never signals SERVICE_RUNNING, SCM treats the
+// start as failed, and sc.exe's restart-on-failure actions never fire. No-op
+// off Windows or outside an actual service session.
+builder.Host.UseWindowsService();
 
 // localhost-only HTTP API the browser app talks to. Port is configurable so it
 // can coexist with anything else on the machine.
