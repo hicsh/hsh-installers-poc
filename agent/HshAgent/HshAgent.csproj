@@ -21,6 +21,8 @@
          (see Program.cs UseWindowsService) so sc.exe's restart-on-failure
          actions actually take effect. No-op on macOS/Linux. -->
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.1" />
+    <!-- For WMI-based Windows Service registration (more reliable than sc.exe). -->
+    <PackageReference Include="System.Management" Version="8.0.0" />
   </ItemGroup>
 
 </Project>

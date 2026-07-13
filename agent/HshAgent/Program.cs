@@ -4,27 +4,34 @@ using Microsoft.AspNetCore.Connections;
 using Velopack;
 
 // Must run before anything else: handles Velopack's install/update/uninstall
-// hooks and returns immediately on a normal run. OnFirstRun is cross-platform
-// (registers the macOS LaunchAgent / Linux systemd user unit); the *FastCallback
-// hooks are Windows-only (elevated by Setup.exe — service registration).
-var velopack = VelopackApp.Build()
-    .OnFirstRun(InstallHooks.FirstRun);
+// hooks and returns immediately on a normal run.
+var velopack = VelopackApp.Build();
+
 if (OperatingSystem.IsWindows())
 {
     velopack
-        .OnAfterInstallFastCallback(InstallHooks.AfterInstall)
-        .OnBeforeUninstallFastCallback(InstallHooks.BeforeUninstall);
+        .OnFirstRun(WindowsInstallHooks.FirstRun)
+        .OnAfterInstallFastCallback(WindowsInstallHooks.AfterInstall)
+        .OnBeforeUninstallFastCallback(WindowsInstallHooks.BeforeUninstall);
 }
+else if (OperatingSystem.IsMacOS())
+{
+    velopack.OnFirstRun(MacOsInstallHooks.FirstRun);
+}
+
 velopack.Run();
 
-// On the first launch after install we just registered an OS autostart entry
-// (launchd LaunchAgent / systemd user unit / Windows Service) that immediately
+// On the first launch after install we registered an OS autostart entry
+// (launchd LaunchAgent on macOS / Windows Service on Windows) that immediately
 // starts its own managed copy of the agent. Hand off to that single instance
 // and exit: if this foreground process also started the web host, the two
-// would race to bind the HTTP port and the loser would crash — and under
-// KeepAlive/sc.exe's restart policy that becomes a relaunch/crash loop. Later
+// would race to bind the HTTP port and the loser would crash. Later
 // launches (by the service manager) skip OnFirstRun.
-if (InstallHooks.RegisteredSelfStartingAutostart)
+var selfStartingAutostart = OperatingSystem.IsWindows()
+    ? WindowsInstallHooks.RegisteredSelfStartingAutostart
+    : MacOsInstallHooks.RegisteredSelfStartingAutostart;
+
+if (selfStartingAutostart)
 {
     Console.WriteLine("First-run setup complete — handing off to the background service.");
     return;
