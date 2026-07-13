@@ -8,7 +8,7 @@ GitHub Actions pipeline.
 It deliberately has no real business logic — a **random number streamed over
 SignalR** stands in for whatever live data the production agent would provide. The
 point is to exercise the install → run → detect → update → cross-OS-publish loop
-end to end.
+end to end. 
 
 ## What it does
 
