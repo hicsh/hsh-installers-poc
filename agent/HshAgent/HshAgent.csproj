@@ -6,6 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>HshAgent</RootNamespace>
     <AssemblyName>HshAgent</AssemblyName>
+    <!-- Background agent: GUI subsystem on Windows so no console window
+         appears at logon. Conditioned on the RID so dev-time `dotnet run`
+         (no RID) keeps its console. -->
+    <OutputType Condition="$(RuntimeIdentifier.StartsWith('win'))">WinExe</OutputType>
   </PropertyGroup>
 
   <PropertyGroup>

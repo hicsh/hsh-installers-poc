@@ -28,7 +28,11 @@ public static class MacOsInstallHooks
               <key>Label</key><string>{LaunchdLabel}</string>
               <key>ProgramArguments</key><array><string>{exe}</string></array>
               <key>RunAtLoad</key><true/>
-              <key>KeepAlive</key><true/>
+              <!-- Crash-only keep-alive: a plain <true/> restarts the job even
+                   after a clean exit, so a port-conflict exit(0) or an update
+                   handoff would loop forever. -->
+              <key>KeepAlive</key>
+              <dict><key>SuccessfulExit</key><false/></dict>
             </dict>
             </plist>
             """;

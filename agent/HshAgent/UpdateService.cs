@@ -55,10 +55,10 @@ public sealed record UpdateStatusDto(
 /// Runs the optional scheduled background check (policy Auto) and serves the
 /// on-demand update triggered by the web app's "Update now" button.
 ///
-/// The agent is a headless background service, so we
-/// <see cref="UpdateManager.ApplyUpdatesAndExit"/> rather than ...AndRestart:
-/// the process exits and the service manager's keep-alive relaunches the
-/// freshly-installed version.
+/// Applies via <see cref="UpdateManager.ApplyUpdatesAndRestart(VelopackAsset, string[])"/>
+/// so Update.exe relaunches the freshly-installed version itself. Neither
+/// autostart mechanism would do that for us: the Windows HKCU Run key has no
+/// keep-alive, and the macOS LaunchAgent only restarts the agent on a crash.
 /// </summary>
 public sealed class UpdateService : BackgroundService
 {
@@ -221,9 +221,9 @@ public sealed class UpdateService : BackgroundService
             await Task.Delay(TimeSpan.FromSeconds(1));
 
             SetState(UpdateState.Applying);
-            _log.LogInformation("Applying update v{Version} and exiting; service manager will relaunch", version);
-            // Process exits here; launchd / Windows Service / systemd keep-alive relaunches the new version.
-            _mgr.ApplyUpdatesAndExit(info.TargetFullRelease);
+            _log.LogInformation("Applying update v{Version}; Update.exe will relaunch the new version", version);
+            // Process exits here; Update.exe applies the update and relaunches the agent.
+            _mgr.ApplyUpdatesAndRestart(info.TargetFullRelease);
         }
         catch (Exception ex)
         {

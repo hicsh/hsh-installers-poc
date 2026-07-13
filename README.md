@@ -16,7 +16,7 @@ end to end.
   exposing:
   - `GET /version` — the running version.
   - `GET /update/status` / `POST /update` — Velopack self-update (download & apply
-    in place, then the OS service manager relaunches the new version).
+    in place, then Velopack's `Update.exe` relaunches the new version).
   - SignalR hub at `/hub` that pushes a `RandomNumber` every ~2 s.
 - **Web client** (`web/`, Angular 22) — connects to the agent and:
   - **Agent offline** → detects your OS and shows the matching installer as the
@@ -79,6 +79,35 @@ download view. The update flows can be demoed without a real newer release:
 The web client's `minAgentVersion` and download asset names live in
 `web/src/environments/environment.ts`.
 
+## Background running & autostart
+
+The whole install is **per-user and never needs admin rights** — Velopack installs
+to the user's app-data folder and the autostart hooks only touch per-user
+mechanisms. A normal double-click on the installer is all a user does.
+
+- **Windows** — the install hook writes the agent into the
+  `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` registry key (the same
+  per-user autostart Slack/Discord use), pointing at the stable
+  `%LocalAppData%\HshAgent\current\HshAgent.exe` path. The installer's post-install
+  launch is the running agent for the current session; the Run key starts it at
+  every subsequent logon. Uninstalling removes the key. The exe is built as
+  `WinExe`, so no console window appears. Hook activity is logged to
+  `%AppData%\HshAgent\install.log`.
+  (Earlier attempts — a Windows Service and a `schtasks` ONLOGON task — both fail
+  with access-denied from a non-elevated installer; the Run key needs no
+  permissions at all.)
+- **macOS** — the first-run hook writes a launchd **LaunchAgent**
+  (`~/Library/LaunchAgents/com.hsh.agent.plist`, `RunAtLoad` + crash-only
+  `KeepAlive`) and loads it, so the agent starts immediately and at every login.
+  Known limitation: dragging the app to the trash doesn't remove the plist
+  (Velopack has no uninstall hook on macOS).
+- **Linux** — autostart is **not implemented yet**; the AppImage runs only while
+  started manually.
+
+Autostart is at user **logon** (after a reboot, once the user signs in). Starting
+before login would require an admin-installed system service, which this POC
+deliberately avoids.
+
 ## Packaging
 
 `scripts/pack.sh <version> <rid>` publishes a self-contained agent and runs
@@ -102,8 +131,8 @@ plain-text welcome/readme/conclusion panes on macOS, an `.ico` on Windows, a
 > AppImage from macOS).
 
 > **Linux is an AppImage**, not a `.deb`/`.rpm` — that's Velopack's installable,
-> self-updating form on Linux. The first-run hook registers a systemd **user**
-> service so it relaunches after a self-update exit.
+> self-updating form on Linux. No autostart is registered on Linux yet (a systemd
+> user service would be the natural follow-up).
 
 ## Publishing a release
 

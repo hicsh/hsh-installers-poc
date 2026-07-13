@@ -21,17 +21,14 @@ else if (OperatingSystem.IsMacOS())
 
 velopack.Run();
 
-// On the first launch after install we registered an OS autostart entry
-// (launchd LaunchAgent on macOS / Windows Service on Windows) that immediately
+// macOS only: the first-run hook loads a launchd LaunchAgent that immediately
 // starts its own managed copy of the agent. Hand off to that single instance
 // and exit: if this foreground process also started the web host, the two
-// would race to bind the HTTP port and the loser would crash. Later
-// launches (by the service manager) skip OnFirstRun.
-var selfStartingAutostart = OperatingSystem.IsWindows()
-    ? WindowsInstallHooks.RegisteredSelfStartingAutostart
-    : MacOsInstallHooks.RegisteredSelfStartingAutostart;
-
-if (selfStartingAutostart)
+// would race to bind the HTTP port and the loser would crash. On Windows the
+// hook merely writes the HKCU Run key (nothing starts a second copy), so this
+// first-run process falls through and runs the web host itself; the Run key
+// covers every subsequent logon.
+if (OperatingSystem.IsMacOS() && MacOsInstallHooks.RegisteredSelfStartingAutostart)
 {
     Console.WriteLine("First-run setup complete — handing off to the background service.");
     return;
