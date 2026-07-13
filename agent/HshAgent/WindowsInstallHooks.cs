@@ -26,8 +26,21 @@ public static class WindowsInstallHooks
 
     public static void FirstRun(SemanticVersion version)
     {
-        // Service was already started by AfterInstall (elevated), just hand off to it
-        RegisteredSelfStartingAutostart = true;
+        // On first run after install, register the service. This is a fallback in case
+        // the AfterInstall fast callback didn't fire (common issue with Velopack).
+        LogToFile("FirstRun hook called");
+
+        try
+        {
+            RegisterWindowsService();
+            RegisteredSelfStartingAutostart = true;
+        }
+        catch (Exception ex)
+        {
+            LogToFile($"FirstRun: Failed to register service: {ex.Message}");
+            // App will still run, but service won't auto-start on reboot
+        }
+
         Console.WriteLine($"HSH Agent v{version} installed.");
     }
 
