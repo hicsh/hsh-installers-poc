@@ -38,7 +38,16 @@ var agentVersion = typeof(Program).Assembly
     .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
     ?.InformationalVersion ?? "0.0.0";
 
-var builder = WebApplication.CreateBuilder(args);
+// ContentRootPath must be the executable's own directory, not the process's
+// working directory: launchd (macOS LaunchAgent) and Windows scheduled tasks
+// don't set a working directory, so the default (cwd) leaves appsettings.json
+// unresolved and config silently falls back to defaults (e.g. an empty
+// Update:Github:RepoUrl, which disables self-update entirely).
+var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+{
+    Args = args,
+    ContentRootPath = AppContext.BaseDirectory,
+});
 
 // localhost-only HTTP API the browser app talks to. Port is configurable so it
 // can coexist with anything else on the machine.
