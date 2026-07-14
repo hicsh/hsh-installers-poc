@@ -99,8 +99,12 @@ mechanisms. A normal double-click on the installer is all a user does.
 - **macOS** — the first-run hook writes a launchd **LaunchAgent**
   (`~/Library/LaunchAgents/com.hsh.agent.plist`, `RunAtLoad` + crash-only
   `KeepAlive`) and loads it, so the agent starts immediately and at every login.
-  Known limitation: dragging the app to the trash doesn't remove the plist
-  (Velopack has no uninstall hook on macOS).
+  The LaunchAgent passes `--background` so the agent can tell that launch apart
+  from a human opening the app directly. To uninstall: open **HSH Agent.app**
+  again from Applications — since it's already running in the background, this
+  shows a dialog with an **Uninstall…** option that removes the app, stops
+  autostart, and clears cached data (Velopack has no uninstall hook on macOS,
+  so this in-app flow replaces it).
 - **Linux** — autostart is **not implemented yet**; the AppImage runs only while
   started manually.
 
