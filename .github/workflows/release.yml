@@ -81,7 +81,26 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           echo "==> Release assets:"
           ls -1 dist/releases/
+
+          # Everything else in dist/releases/ is Velopack update-feed data
+          # (*.nupkg, releases.*.json, RELEASES-*) the app's auto-updater reads —
+          # not meant for a human to click. Surface just the 3 installers up top.
+          BASE_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME"
+          {
+            echo "## Quick downloads"
+            echo
+            echo "| Platform | Installer |"
+            echo "|---|---|"
+            echo "| 🪟 Windows | [HshAgent-win-x64-Setup.exe]($BASE_URL/HshAgent-win-x64-Setup.exe) |"
+            echo "| 🍎 macOS (Apple Silicon) | [HshAgent-osx-arm64-Setup.pkg]($BASE_URL/HshAgent-osx-arm64-Setup.pkg) |"
+            echo "| 🍎 macOS (Intel) | [HshAgent-osx-x64-Setup.pkg]($BASE_URL/HshAgent-osx-x64-Setup.pkg) |"
+            echo
+            echo "The other files below (\`*.nupkg\`, \`releases.*.json\`) are Velopack's update feed, used by the app's auto-updater — you don't need them for a manual install."
+            echo
+            gh api "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f "tag_name=$GITHUB_REF_NAME" --jq .body
+          } > release-notes.md
+
           gh release create "$GITHUB_REF_NAME" dist/releases/* \
             --title "HSH Agent $VERSION" \
-            --generate-notes \
+            --notes-file release-notes.md \
             --latest
