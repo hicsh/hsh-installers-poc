@@ -223,7 +223,11 @@ public sealed class UpdateService : BackgroundService
             SetState(UpdateState.Applying);
             _log.LogInformation("Applying update v{Version}; Update.exe will relaunch the new version", version);
             // Process exits here; Update.exe applies the update and relaunches the agent.
-            _mgr.ApplyUpdatesAndRestart(info.TargetFullRelease);
+            // On macOS, this relaunch bypasses the LaunchAgent entirely, so it must carry
+            // --background itself or the freshly-updated process would mistake itself for a
+            // manual launch and show the status/uninstall dialog instead of serving the API.
+            var restartArgs = OperatingSystem.IsMacOS() ? new[] { "--background" } : null;
+            _mgr.ApplyUpdatesAndRestart(info.TargetFullRelease, restartArgs);
         }
         catch (Exception ex)
         {

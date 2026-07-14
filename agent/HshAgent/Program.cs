@@ -1,6 +1,7 @@
 using System.Reflection;
 using HshAgent;
 using Microsoft.AspNetCore.Connections;
+using Microsoft.Extensions.Configuration;
 using Velopack;
 
 // Must run before anything else: handles Velopack's install/update/uninstall
@@ -31,6 +32,20 @@ velopack.Run();
 if (OperatingSystem.IsMacOS() && MacOsInstallHooks.RegisteredSelfStartingAutostart)
 {
     Console.WriteLine("First-run setup complete — handing off to the background service.");
+    return;
+}
+
+// The LaunchAgent always passes --background (see MacOsInstallHooks.RegisterLaunchAgent)
+// and so does our own post-update relaunch (see UpdateService.RunUpdateAsync). Its absence
+// means a human launched the app directly — e.g. double-clicking it in Finder — so show a
+// small status/uninstall dialog instead of racing the LaunchAgent-managed copy for the port.
+if (OperatingSystem.IsMacOS() && !args.Contains("--background"))
+{
+    var probeConfig = new ConfigurationBuilder()
+        .SetBasePath(AppContext.BaseDirectory)
+        .AddJsonFile("appsettings.json", optional: true)
+        .Build();
+    MacOsInstallHooks.ShowManualLaunchDialog(probeConfig.GetValue("Server:Port", 9740));
     return;
 }
 
