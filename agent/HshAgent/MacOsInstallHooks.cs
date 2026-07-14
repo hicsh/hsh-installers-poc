@@ -128,8 +128,16 @@ public static class MacOsInstallHooks
     {
         // Stop autostart and kill the running background copy first, so nothing
         // fights the deletion below or relaunches it via KeepAlive mid-uninstall.
-        Run("/bin/launchctl", $"bootout gui/{Environment.UserName} {LaunchdLabel}"); // best-effort
+        // Unload by path (matching RegisterLaunchAgent's own style) rather than
+        // `bootout gui/<uid>` — the uid must be numeric, and Environment.UserName
+        // is the account name, not the numeric id, so that form silently no-ops.
+        // Must run before the plist is deleted: launchctl reads it to find the
+        // job's label.
+        Run("/bin/launchctl", $"unload {UserLaunchAgentPlist}"); // best-effort
         try { File.Delete(UserLaunchAgentPlist); } catch { /* already gone */ }
+        // Belt-and-suspenders in case unload didn't actually stop it (e.g. the
+        // job wasn't tracked, or it's racing a KeepAlive restart).
+        Run("/usr/bin/pkill", "-f \"HSH Agent.app/Contents/MacOS/HshAgent\"");
 
         // Ask Velopack where this running copy actually lives rather than guessing
         // between /Applications and ~/Applications — the locator already resolved

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>CFBundleName</key>
+    <string>HSH Agent</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.hsh.agent</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleExecutable</key>
+    <string>HshAgent</string>
+    <key>CFBundleIconFile</key>
+    <string>hsh.icns</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <!-- Agent app: no Dock icon, no menu bar. Without this, launching the bundle
+         via `open` — which is exactly how Velopack's UpdateMac relaunches the app
+         after applying an update — makes macOS treat it as a regular foreground
+         GUI app, complete with a Dock icon, even though it's a headless ASP.NET
+         Core process with no AppKit event loop. That app never responds to the
+         standard Dock/Apple Events, so it immediately shows "Not Responding" and
+         can't be reopened to reach the uninstall dialog. -->
+    <key>LSUIElement</key>
+    <true/>
+  </dict>
+</plist>

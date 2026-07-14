@@ -61,7 +61,11 @@ case "$RID" in
     add_brand --instWelcome     installer-assets/macos/welcome.txt
     add_brand --instReadme      installer-assets/macos/readme.txt
     add_brand --instConclusion  installer-assets/macos/conclusion.txt
-    [ ${#BRAND_ARGS[@]} -gt 0 ] && BRAND_ARGS+=(--bundleId com.hsh.agent)
+    # LSUIElement=true: without it, `open`-based launches (including
+    # UpdateMac's own post-update relaunch) give the headless agent a Dock
+    # icon that immediately shows "Not Responding". --plist and --bundleId
+    # are mutually exclusive, so the bundle id lives in Info.plist itself.
+    add_brand --plist           installer-assets/macos/Info.plist
     ;;
   linux-*)
     add_brand --icon installer-assets/linux/hsh.png
