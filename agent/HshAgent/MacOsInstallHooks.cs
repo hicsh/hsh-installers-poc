@@ -8,6 +8,9 @@ public static class MacOsInstallHooks
 {
     private const string LaunchdLabel = "com.hsh.agent";
 
+    [System.Runtime.InteropServices.DllImport("libc")]
+    private static extern uint getuid();
+
     public static bool RegisteredSelfStartingAutostart { get; set; }
 
     public static void FirstRun(SemanticVersion version)
@@ -128,16 +131,17 @@ public static class MacOsInstallHooks
     {
         // Stop autostart and kill the running background copy first, so nothing
         // fights the deletion below or relaunches it via KeepAlive mid-uninstall.
-        // Unload by path (matching RegisterLaunchAgent's own style) rather than
-        // `bootout gui/<uid>` — the uid must be numeric, and Environment.UserName
-        // is the account name, not the numeric id, so that form silently no-ops.
-        // Must run before the plist is deleted: launchctl reads it to find the
-        // job's label.
-        Run("/bin/launchctl", $"unload {UserLaunchAgentPlist}"); // best-effort
+        // bootout removes the job and kills its process atomically; unload+pkill
+        // raced — pkill's SIGTERM counts as a crash, so the still-loaded job's
+        // KeepAlive respawned the agent from the just-deleted bundle. The uid
+        // must be numeric (Environment.UserName is the account name), hence
+        // getuid(). Doesn't need the plist file, but run it before deleting one.
+        Run("/bin/launchctl", $"bootout gui/{getuid()}/{LaunchdLabel}"); // best-effort
         try { File.Delete(UserLaunchAgentPlist); } catch { /* already gone */ }
-        // Belt-and-suspenders in case unload didn't actually stop it (e.g. the
-        // job wasn't tracked, or it's racing a KeepAlive restart).
-        Run("/usr/bin/pkill", "-f \"HSH Agent.app/Contents/MacOS/HshAgent\"");
+        // A post-update agent isn't launchd-managed (UpdateMac relaunches it via
+        // `open`), so bootout can't reach it. --background in the pattern keeps
+        // this very instance — the manual-launch dialog — from killing itself.
+        Run("/usr/bin/pkill", "-f \"HSH Agent.app/Contents/MacOS/HshAgent --background\"");
 
         // Ask Velopack where this running copy actually lives rather than guessing
         // between /Applications and ~/Applications — the locator already resolved
@@ -148,25 +152,11 @@ public static class MacOsInstallHooks
 
         if (!string.IsNullOrEmpty(appDir) && Directory.Exists(appDir))
         {
-            // The pkg receipt DB is root-owned regardless of install location, so
-            // `pkgutil --forget` always needs elevation even if the app itself
-            // doesn't (a "just me" install can still leave a root-owned receipt).
-            if (!IsWritable(appDir))
-            {
-                var cmd = $"rm -rf '{appDir}'; pkgutil --forget {LaunchdLabel} >/dev/null 2>&1 || true";
-                if (!RunElevated(cmd, prompt: "HSH Agent needs your password to finish uninstalling."))
-                {
-                    ShowDialog(
-                        "Uninstall cancelled. HSH Agent won't start automatically anymore, but the app is still in Applications — you can try again or delete it manually.",
-                        new[] { "OK" }, defaultButton: "OK");
-                    return;
-                }
-            }
-            else
-            {
-                try { Directory.Delete(appDir, recursive: true); } catch { }
-                Run("/usr/sbin/pkgutil", $"--forget {LaunchdLabel}"); // best-effort
-            }
+            try { Directory.Delete(appDir, recursive: true); } catch { }
+            // Home-domain ("just me") installs record their receipt in the
+            // per-user DB, which plain `pkgutil --forget` (root volume) never sees.
+            Run("/usr/sbin/pkgutil",
+                $"--volume \"{Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)}\" --forget {LaunchdLabel}"); // best-effort
         }
 
         // Unprivileged cleanup.
@@ -176,21 +166,6 @@ public static class MacOsInstallHooks
 
         ShowDialog("HSH Agent has been uninstalled.", new[] { "OK" }, defaultButton: "OK");
         Environment.Exit(0);
-    }
-
-    private static bool IsWritable(string dir)
-    {
-        try
-        {
-            var probe = Path.Combine(dir, $".hsh-write-test-{Guid.NewGuid():N}");
-            File.WriteAllText(probe, "");
-            File.Delete(probe);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
     }
 
     /// <summary>Shows a native dialog via osascript and returns the clicked button, or null if
@@ -221,32 +196,6 @@ public static class MacOsInstallHooks
         {
             Console.Error.WriteLine($"Could not show dialog: {ex.Message}");
             return null;
-        }
-    }
-
-    /// <summary>Runs a shell command with an admin-privileges prompt via osascript. Returns false
-    /// if the user cancelled the prompt or it otherwise failed. Never throws.</summary>
-    private static bool RunElevated(string shellCommand, string prompt)
-    {
-        var script = $"do shell script \"{EscapeForAppleScript(shellCommand)}\" " +
-                     $"with administrator privileges with prompt \"{EscapeForAppleScript(prompt)}\"";
-        try
-        {
-            using var p = Process.Start(new ProcessStartInfo("/usr/bin/osascript")
-            {
-                ArgumentList = { "-e", script },
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            });
-            p!.WaitForExit();
-            return p.ExitCode == 0;
-        }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"Elevated step failed: {ex.Message}");
-            return false;
         }
     }
 

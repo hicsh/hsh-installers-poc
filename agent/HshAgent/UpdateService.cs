@@ -55,7 +55,7 @@ public sealed record UpdateStatusDto(
 /// Runs the optional scheduled background check (policy Auto) and serves the
 /// on-demand update triggered by the web app's "Update now" button.
 ///
-/// Applies via <see cref="UpdateManager.ApplyUpdatesAndRestart(VelopackAsset, string[])"/>
+/// Applies via <see cref="UpdateManager.WaitExitThenApplyUpdates(VelopackAsset, bool, bool, string[])"/>
 /// so Update.exe relaunches the freshly-installed version itself. Neither
 /// autostart mechanism would do that for us: the Windows HKCU Run key has no
 /// keep-alive, and the macOS LaunchAgent only restarts the agent on a crash.
@@ -227,7 +227,18 @@ public sealed class UpdateService : BackgroundService
             // --background itself or the freshly-updated process would mistake itself for a
             // manual launch and show the status/uninstall dialog instead of serving the API.
             var restartArgs = OperatingSystem.IsMacOS() ? new[] { "--background" } : null;
-            _mgr.ApplyUpdatesAndRestart(info.TargetFullRelease, restartArgs);
+            // silent: true — non-silent Update.exe shows GUI dialogs (progress, and an
+            // elevation confirm if the bundle isn't writable) that a headless
+            // LaunchAgent-spawned process can never bring to the front on macOS 14+;
+            // they sit invisible and auto-cancel after 5 minutes, killing the update
+            // with the old process already gone. The per-user install never needs
+            // elevation, so if permissions are ever wrong we want a fast, logged
+            // failure instead of an invisible dialog.
+            _mgr.WaitExitThenApplyUpdates(info.TargetFullRelease, silent: true, restart: true, restartArgs);
+            // Update.exe only waits 60s for this pid to die, and exit code 0 keeps the
+            // LaunchAgent's crash-only KeepAlive from respawning the old agent mid-swap.
+            // (ApplyUpdatesAndRestart did this same Exit(0) internally.)
+            Environment.Exit(0);
         }
         catch (Exception ex)
         {

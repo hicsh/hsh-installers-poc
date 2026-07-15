@@ -92,4 +92,44 @@ vpk pack \
   "${PACK_OPTS[@]}" \
   "${BRAND_ARGS[@]}"
 
+# vpk hardcodes the .pkg to offer an "all users" install (/Applications,
+# root-owned), which breaks self-update: UpdateMac can't rename a root-owned
+# bundle, and its elevation fallback blocks on GUI dialogs a background
+# LaunchAgent process can never bring to the front on macOS 14+ — they sit
+# invisible and auto-cancel after 5 minutes. Rewrite the package to
+# home-domain-only (~/Applications, user-owned, matching the per-user install
+# on Windows) so updates never need elevation, and replace vpk's stock
+# postinstall: it was written for a root install (`sudo -u "$USER" …`), which
+# fails when the script itself already runs unprivileged.
+case "$RID" in
+  osx-*)
+    PKG="$RELEASE_DIR/HshAgent-$RID-Setup.pkg"
+    echo "==> Rewriting $PKG as a per-user (home-domain) installer"
+    EXPAND_DIR="$(mktemp -d)/expanded"
+    pkgutil --expand "$PKG" "$EXPAND_DIR"
+
+    sed -i '' 's/enable_localSystem="true"/enable_localSystem="false"/' "$EXPAND_DIR/Distribution"
+    grep -q 'enable_currentUserHome="true".*enable_localSystem="false"' "$EXPAND_DIR/Distribution" \
+      || { echo "error: expected <domains> line not found — did vpk's pkg layout change?" >&2; exit 1; }
+
+    COMPONENT=("$EXPAND_DIR"/*.pkg)
+    [ -f "${COMPONENT[0]}/Scripts/postinstall" ] \
+      || { echo "error: component postinstall not found — did vpk's pkg layout change?" >&2; exit 1; }
+    cat > "${COMPONENT[0]}/Scripts/postinstall" <<'POSTINSTALL'
+#!/bin/sh
+# Home-domain install: runs unprivileged as the installing user; $2 is
+# ~/Applications. Clears stale Velopack temp/cache state, then launches the
+# app once so its first-run hook registers the login LaunchAgent.
+rm -rf /tmp/velopack/HshAgent
+rm -rf "$HOME/Library/Caches/velopack/HshAgent"
+env VELOPACK_FIRSTRUN=1 open "$2/HSH Agent.app/"
+exit 0
+POSTINSTALL
+    chmod +x "${COMPONENT[0]}/Scripts/postinstall"
+
+    rm -f "$PKG"
+    pkgutil --flatten "$EXPAND_DIR" "$PKG"
+    ;;
+esac
+
 echo "==> Done. Release artifacts (installer + *.nupkg + releases.*.json) in $RELEASE_DIR/"
