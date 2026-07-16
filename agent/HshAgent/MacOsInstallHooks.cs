@@ -40,6 +40,11 @@ public static class MacOsInstallHooks
                    handoff would loop forever. -->
               <key>KeepAlive</key>
               <dict><key>SuccessfulExit</key><false/></dict>
+              <!-- The updater (UpdateMac) is spawned into this job's process
+                   group; by default launchd SIGKILLs the whole group the moment
+                   the agent exits to hand off an update, killing the updater
+                   before it can swap the bundle and relaunch. -->
+              <key>AbandonProcessGroup</key><true/>
             </dict>
             </plist>
             """;
